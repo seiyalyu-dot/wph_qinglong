@@ -1,0 +1,13 @@
+{
+  "name": "weipinhui-qinglong",
+  "version": "1.0.0",
+  "description": "唯品会自动任务青龙自包含入口",
+  "main": "wph.js",
+  "scripts": {
+    "start": "node wph.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "crypto-js": "^4.2.0"
+  }
+}

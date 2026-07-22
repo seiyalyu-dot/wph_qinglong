@@ -1,0 +1,5 @@
+node_modules/
+.env
+*_dump.json
+*_traffic.json
+*.log
