@@ -7,8 +7,10 @@
 青龙面板 → 订阅管理 → 新建订阅：
 
 ```bash
-ql repo https://github.com/seiyalyu-dot/wph_qinglong.git "" "" "" "main"
+ql repo https://github.com/seiyalyu-dot/wph_qinglong.git "" "wph_all_api" "" "main"
 ```
+
+> 黑名单 `wph_all_api` 确保依赖模块不会被青龙误检测为定时任务。
 
 ## 快速配置
 
