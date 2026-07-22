@@ -1501,7 +1501,7 @@ async function runAccount(acc, idx, total) {
 async function main() {
   log('===== 唯品会 所有任务 (commonTask + checkRoom + 合成 + feedSheep + signIn) 多账号 =====');
   const accounts = await loadSessions();
-  if (!accounts.length) { log('❌ 找不到有效会话：既无 wph_accounts.json / wph_cookie.json（H5 登录产物），HAR 里的 session 也全部过期。请先运行 `node wph_login.js` 登录，或重新导出微信会话 .har 文件。'); process.exit(1); }
+  if (!accounts.length) { log('❌ 找不到有效账号/会话：请在青龙「环境变量」里配置 WPH_COOKIE（多账号用换行分隔，每行一个完整 cookie 串），或 WPH_ACCOUNTS（JSON 数组，支持 name / mars_cid / mars_sid）。也可运行 `node wph_login.js` 生成 wph_accounts.json。当前既无 WPH_COOKIE / WPH_ACCOUNTS，也无 wph_accounts.json / wph_cookie.json / 有效 .har。'); await drainLog(); return; }
   log(`共 ${accounts.length} 个有效账号`);
   const PARALLEL = Math.max(1, parseInt(process.env.WPH_PARALLEL) || 2); // 默认2：多账号自动并行(单号节奏不变、零风控风险)；如需串行设 WPH_PARALLEL=1
   // 幸运红包：九宫格随机抽奖。先预览奖品，默认直接抽(抽完当日次数)；设 WPH_REDPACKET 可指定 all/次数/skip，WPH_REDPACKET_ASK=1 恢复交互询问
