@@ -28,8 +28,8 @@ const http = require('http');
 // 优先同目录 wph_all_api.js（qinglong/ 目录自包含部署）；
 // 回退父目录（整仓订阅部署，如 ql repo 拉库）
 let api;
-const localApi = path.join(__dirname, 'lib', 'wph_all_api.cjs');
-const parentApi = path.join(__dirname, '..', 'qinglong', 'lib', 'wph_all_api.cjs');
+const localApi = path.join(__dirname, 'lib', 'wph_all_api.js');
+const parentApi = path.join(__dirname, '..', 'qinglong', 'lib', 'wph_all_api.js');
 if (fs.existsSync(localApi)) {
   api = require(localApi);
 } else if (fs.existsSync(parentApi)) {
