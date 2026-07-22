@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+// new Env('地利一哥')
 'use strict';
 /**
- * 唯品会自动任务 —— 青龙(qinglong) 单文件入口
+ * 地利一哥 —— 唯品会自动任务（青龙单文件入口）
  *
  * 部署：把整个 qinglong/ 目录放到青龙脚本区，定时任务命令填：
  *     node qinglong/wph.js
