@@ -7,10 +7,10 @@
 青龙面板 → 订阅管理 → 新建订阅：
 
 ```bash
-ql repo https://github.com/seiyalyu-dot/wph_qinglong.git "wph.js" "" "lib/wph_all_api.js" "main"
+ql repo https://github.com/seiyalyu-dot/wph_qinglong.git "" "" "" "main"
 ```
 
-> 白名单 `wph.js` 确保只有入口文件被当作定时任务；`lib/wph_all_api.js` 列为依赖文件，不会被误加。
+> 仓库只有 `wph.js` 一个 js 文件，青龙只会生成一个定时任务，无需白名单/黑名单。
 
 ## 快速配置
 
