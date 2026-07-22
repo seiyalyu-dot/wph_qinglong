@@ -28,14 +28,14 @@ const http = require('http');
 // 优先同目录 wph_all_api.js（qinglong/ 目录自包含部署）；
 // 回退父目录（整仓订阅部署，如 ql repo 拉库）
 let api;
-const localApi = path.join(__dirname, 'wph_all_api.js');
-const parentApi = path.join(__dirname, '..', 'wph_all_api.js');
+const localApi = path.join(__dirname, 'lib', 'wph_all_api.js');
+const parentApi = path.join(__dirname, '..', 'qinglong', 'lib', 'wph_all_api.js');
 if (fs.existsSync(localApi)) {
   api = require(localApi);
 } else if (fs.existsSync(parentApi)) {
   api = require(parentApi);
 } else {
-  console.error('❌ 找不到 wph_all_api.js，请确保 qinglong/ 目录包含该文件或整仓订阅部署');
+  console.error('❌ 找不到 wph_all_api.js，请确保 lib/ 目录包含该文件或整仓订阅部署');
   process.exit(1);
 }
 const { main, RUN_LOG } = api;
