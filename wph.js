@@ -12,7 +12,7 @@
  *   WPH_ACCOUNTS JSON 数组，格式同 wph_accounts.json：[{"cookie":"...","name":"账号1"}]
  *
  * 常用环境变量开关：
- *   WPH_PARALLEL        多账号并行数，默认 2（设 1 可串行，风控更稳）
+ *   WPH_PARALLEL        多账号并发数，默认「全部账号并行」（设 N 限制并发上限，设 1 可串行，风控更稳）
  *   WPH_FAST            安全加速倍数(仅压缩装饰性等待)
  *   WPH_REDPACKET       all=抽完 / skip=不抽（非交互默认不抽）
  *   WPH_DO_EXCHANGE     1=执行津贴抢兑
@@ -37,7 +37,7 @@ const api = (function(){
  * 运行: node wph_all_api.js   (输出重定向可加 > wph_all_api.log 2>&1)
  * 会话来源: 优先 wph_accounts.json / wph_cookie.json(H5 登录所得, 见 wph_login.js)。
  * HAR 扫描默认禁用(会拖慢启动并刷屏);需用时设置 WPH_ENABLE_HAR=1。
- * 提速开关：多账号默认并行(WPH_PARALLEL，默认2)；WPH_FAST=2/3 仅压缩"空闲/装饰性"等待(模拟分心/模块间隔/关卡停顿)，
+ * 提速开关：多账号默认全部并行(WPH_PARALLEL，不设则等于账号总数)；WPH_FAST=2/3 仅压缩"空闲/装饰性"等待(模拟分心/模块间隔/关卡停顿)，
  *   不缩放浏览20s与限流退避，安全可日常用。注意 WPH_SPEED 是内部调试字段，会破坏浏览任务，勿日常用。
  */
 const fs = require('fs');
@@ -1496,7 +1496,7 @@ async function main() {
   const accounts = await loadSessions();
   if (!accounts.length) { log('❌ 找不到有效账号/会话：请在青龙「环境变量」里配置 WPH_COOKIE（多账号用换行分隔，每行一个完整 cookie 串），或 WPH_ACCOUNTS（JSON 数组，支持 name / mars_cid / mars_sid）。当前未读取到任何账号。'); await drainLog(); return; }
   log(`共 ${accounts.length} 个有效账号`);
-  const PARALLEL = Math.max(1, parseInt(process.env.WPH_PARALLEL) || 2); // 默认2：多账号自动并行(单号节奏不变、零风控风险)；如需串行设 WPH_PARALLEL=1
+  const PARALLEL = Math.max(1, parseInt(process.env.WPH_PARALLEL) || accounts.length || 1); // 默认全部账号并行（不设 WPH_PARALLEL 时等于账号总数）；设 N 限制并发上限，设 1 可串行(风控更稳)
   // 幸运红包：九宫格随机抽奖。先预览奖品，默认直接抽(抽完当日次数)；设 WPH_REDPACKET 可指定 all/次数/skip，WPH_REDPACKET_ASK=1 恢复交互询问
   if (process.env.WPH_REDPACKET) {
     const v = String(process.env.WPH_REDPACKET).trim().toLowerCase();
@@ -1540,7 +1540,8 @@ async function main() {
     return;
   }
   if (PARALLEL > 1) {
-    log(`并行模式：每批 ${PARALLEL} 个账号（WPH_PARALLEL=${PARALLEL}）`);
+    const tag = PARALLEL >= accounts.length ? `全部并行（${accounts.length} 个账号同时跑）` : `每批 ${PARALLEL} 个账号`;
+    log(`并行模式：${tag}（WPH_PARALLEL=${PARALLEL}）`);
     for (let i = 0; i < accounts.length; i += PARALLEL) {
       const chunk = accounts.slice(i, i + PARALLEL);
       await Promise.all(chunk.map((acc, k) => runAccount(acc, i + k + 1, accounts.length)));
