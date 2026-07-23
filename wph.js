@@ -8,8 +8,19 @@
  *     node qinglong/wph.js
  *
  * 账号配置（均用环境变量，无需落地文件）：
- *   WPH_COOKIE   多账号用换行分隔，每行一个完整 cookie 串（推荐、最简单）
- *   WPH_ACCOUNTS JSON 数组，格式同 wph_accounts.json：[{"cookie":"...","name":"账号1"}]
+ *   WPH_COOKIE   每行一个【纯 cookie 串】(即 wph_accounts.json 里 "cookie" 字段的值，
+ *               形如 mars_cid=xxx; mars_sid=xxx; ...，不要带 {} 和引号)。多账号用换行分隔。
+ *               例(单个账号，值就这一行)：
+ *                 mars_cid=1784769905834_xxx; mars_sid=3f4e669bxxx; WAP[login]=1; m_vipruid=558581200; ...
+ *               例(两个账号，值里换两行)：
+ *                 账号A的整串cookie
+ *                 账号B的整串cookie
+ *   WPH_ACCOUNTS JSON 数组(把 wph_accounts.json 的整个内容粘进来，注意用 [] 包住)：
+ *                [{"cookie":"mars_cid=xxx; ...","mars_cid":"xxx","mars_sid":"xxx","name":"账号1"}]
+ *
+ *   ⚠️ 常见坑：WPH_COOKIE 的值必须是「纯 cookie 串」，不要把 wph_accounts.json 那种
+ *      { "cookie": "...", "name": "账号4" } 的 JSON 对象直接粘进来(那属于 WPH_ACCOUNTS 的格式)。
+ *      一个变量里的【换行数】= 账号数，所以 6 个账号说明该变量的值有 6 行。
  *
  * 常用环境变量开关：
  *   WPH_PARALLEL        多账号并发数，默认「全部账号并行」（设 N 限制并发上限，设 1 可串行，风控更稳）
