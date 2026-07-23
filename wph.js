@@ -54,6 +54,8 @@ const FAST = Math.max(1, parseFloat(process.env.WPH_FAST) || 1); // 安全加速
 const nap = (min, max) => sleep(rand(Math.max(1, Math.round(min / FAST)), Math.max(1, Math.round(max / FAST)))); // 装饰性等待(受 WPH_FAST 缩放)
 const napMs = (ms) => sleep(Math.max(1, Math.round(ms / FAST))); // 单值装饰性等待(受 WPH_FAST 缩放)
 const rand = (a, b) => Math.floor(Math.random() * (b - a + 1)) + a;
+const VERSION = '1.0.0';
+const ts = () => { const d = new Date(); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; };
 // 运行日志缓冲区：供青龙(qinglong)等环境在任务结束后推送通知使用
 const RUN_LOG = [];
 const MAX_LOG = 500;
@@ -164,7 +166,7 @@ async function validateCookie(cookie, cid, sid) {
 // 自动续期会话：mars_sid 由前端 JS 生成（非服务端 Set-Cookie，已实测 m.vip.com 首页/活动接口均不回 Set-Cookie），
 // 故必须用无头浏览器重新访问 m.vip.com，让前端 JS 重新签发 mars_sid。
 // 前提：保存的 cookie 中「底层登录态」(如 WAP[login]) 仍有效 —— 若整登录态已过期，重新签发的 mars_sid 也绑不上用户，续期无效，需 wph_login.js 重登。
-// 默认关闭，设 WPH_AUTO_REFRESH=1 启用（青龙环境若无 playwright 则自动跳过，不影响普通运行）。
+// 默认开启（playwright 可用时自动尝试续期）；设 WPH_AUTO_REFRESH=0 可关闭。青龙环境若无 playwright 则自动跳过，不影响普通运行。
 const REFRESH_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1';
 async function refreshSession(cookieStr) {
   let playwright;
@@ -208,17 +210,28 @@ async function refreshSession(cookieStr) {
 }
 // 续期成功后将新 cookie 回写到 wph_accounts.json / wph_cookie.json 中匹配的账号
 async function persistRefreshed(acc) {
+  const oldCid = ((acc._oldCookie && acc._oldCookie.match(/mars_cid=([^;]+)/)) || [])[1] || '';
   const writeBack = (file) => {
     try {
       const data = JSON.parse(fs.readFileSync(file, 'utf8'));
       const arr = Array.isArray(data) ? data : [data];
-      const hit = arr.find((x) => (acc.mars_cid && x.mars_cid === acc.mars_cid) || x.cookie === acc._oldCookie);
+      // 优先按账号名匹配（同一个账号），再依次回退旧 mars_cid / 旧 cookie 精确相等，
+      // 确保续期拿到新 cookie 时，accounts 与 cookies 里该账号条目都被覆盖。
+      const hit = arr.find((x) =>
+        (acc.name && x.name === acc.name) ||
+        (acc.mars_cid && x.mars_cid === acc.mars_cid) ||
+        (oldCid && x.mars_cid === oldCid) ||
+        (acc._oldCookie && x.cookie === acc._oldCookie) ||
+        (acc._oldCookie && x.cookie && acc._oldCookie.indexOf(x.cookie) >= 0)
+      );
       if (hit) {
         hit.cookie = acc.cookie;
         if (acc.mars_cid) hit.mars_cid = acc.mars_cid;
         if (acc.mars_sid) hit.mars_sid = acc.mars_sid;
         fs.writeFileSync(file, JSON.stringify(Array.isArray(data) ? arr : arr[0], null, 2));
-        log('  💾 已回写 ' + file);
+        log('  💾 已回写新 cookie 至 ' + file + '（账号：' + (acc.name || '?') + '）');
+      } else {
+        log('  ⚠️ 未在 ' + file + ' 找到「' + (acc.name || '?') + '」对应条目，跳过回写');
       }
     } catch (_) {}
   };
@@ -297,13 +310,16 @@ async function gatherAccounts() {
   return merged;
 }
 // 校验并过滤出有效账号（无效/过期会话：若开启自动续期则先尝试无头浏览器刷新）
+const HAS_PLAYWRIGHT = (() => { try { require.resolve('playwright'); return true; } catch (_) { return false; } })();
 async function loadSessions() {
   const candidates = await gatherAccounts();
   const valid = [];
-  const autoRefresh = process.env.WPH_AUTO_REFRESH === '1';
+  const autoRefresh = process.env.WPH_AUTO_REFRESH !== '0'; // 默认开启；=0 关闭
+  const canRefresh = autoRefresh && HAS_PLAYWRIGHT;
+  if (autoRefresh && !HAS_PLAYWRIGHT) log('⚠️ 自动续期已开启，但缺少 playwright（npm i playwright 并 npx playwright install chromium），过期会话将无法自动恢复');
   for (const acc of candidates) {
     let ok = acc.cid && (await validateCookie(acc.cookie, acc.cid, acc.sid));
-    if (!ok && autoRefresh) {
+    if (!ok && canRefresh) {
       log(`⚠️ 账号「${acc.name}」会话无效/过期，尝试自动续期...`);
       acc._oldCookie = acc.cookie;
       const nc = await refreshSession(acc.cookie);
@@ -316,7 +332,7 @@ async function loadSessions() {
       }
     }
     if (ok) valid.push(acc);
-    else log(`⚠️ 账号「${acc.name}」会话无效/过期，已跳过`);
+    else log(`⚠️ 账号「${acc.name}」会话无效/过期，已跳过${canRefresh ? '（续期失败：底层登录态可能已过期，需运行 node wph_login.js 重新登录）' : ''}`);
   }
   return valid;
 }
@@ -1499,6 +1515,7 @@ async function runAccount(acc, idx, total) {
 }
 
 async function main() {
+  log(`ℹ️ 当前版本 v${VERSION} | 启动时间 ${ts()}`);
   log('===== 唯品会 所有任务 (commonTask + checkRoom + 合成 + feedSheep + signIn) 多账号 =====');
   const accounts = await loadSessions();
   if (!accounts.length) { log('❌ 找不到有效账号/会话：请在青龙「环境变量」里配置 WPH_COOKIE（多账号用换行分隔，每行一个完整 cookie 串），或 WPH_ACCOUNTS（JSON 数组，支持 name / mars_cid / mars_sid）。也可运行 `node wph_login.js` 生成 wph_accounts.json。当前既无 WPH_COOKIE / WPH_ACCOUNTS，也无 wph_accounts.json / wph_cookie.json / 有效 .har。'); await drainLog(); return; }
