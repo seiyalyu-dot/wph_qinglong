@@ -250,8 +250,9 @@ function normalizeAccounts(rawList) {
   }
   return out;
 }
-// 收集账号候选：合并 1) wph_accounts.json（显式多账号） + 2) wph_cookie.json（末次登录） + 3) HAR 扫描，
-// 按 (cookie 精确相同 / 非空 mars_cid 相同) 去重，避免任一来源只含一个号时整体只跑一个。
+// 收集账号候选：青龙只从环境变量读取，不读本地 json 文件 / HAR。
+//   - WPH_COOKIE：多账号用换行 \n 分隔，每行一个完整 cookie 串（标准用法）
+//   - WPH_ACCOUNTS：JSON 数组，支持 name / mars_cid / mars_sid 等字段（高级用法）
 async function gatherAccounts() {
   const merged = [];
   const seenCookie = new Set();
@@ -264,16 +265,14 @@ async function gatherAccounts() {
     if (acc.cid) seenCid.add(acc.cid);
     merged.push(acc);
   };
-  // 0) 环境变量 WPH_COOKIE（青龙标准：多账号用换行 \n 分隔，每行一个完整 cookie 串）
-  //    优先级最高，便于青龙面板直接维护账号，无需落地 json 文件。
+  // 1) 环境变量 WPH_COOKIE（青龙标准：多账号用换行 \n 分隔，每行一个完整 cookie 串）
   const envCk = process.env.WPH_COOKIE;
   if (envCk) {
     const lines = String(envCk).split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
     for (const ck of lines) add(normalizeAccounts([{ cookie: ck, name: 'WPH账号' + (merged.length + 1) }])[0]);
     if (lines.length) log(`✅ 从环境变量 WPH_COOKIE 读取 ${lines.length} 个账号`);
   }
-  // 0-bis) 环境变量 WPH_ACCOUNTS（青龙高级：直接粘贴 wph_accounts.json 的 JSON 数组内容，
-  //        支持 name、mars_cid、mars_sid 等字段，适合精细管理多账号）。
+  // 2) 环境变量 WPH_ACCOUNTS（青龙高级：直接粘贴 JSON 数组，支持 name / mars_cid / mars_sid）
   const envAcc = process.env.WPH_ACCOUNTS;
   if (envAcc) {
     try {
@@ -283,30 +282,7 @@ async function gatherAccounts() {
       if (arr.length) log(`✅ 从环境变量 WPH_ACCOUNTS 读取 ${arr.length} 个账号`);
     } catch (_) {}
   }
-  // 1) 显式多账号文件：支持数组或单对象，每项 {cookie, mars_cid?, mars_sid?, name?}
-  const AF = process.env.WPH_ACCOUNTS_FILE || path.join(__dirname, 'wph_accounts.json');
-  try {
-    const data = JSON.parse(fs.readFileSync(AF, 'utf8'));
-    for (const a of (Array.isArray(data) ? data : [data])) add(normalizeAccounts([a])[0]);
-  } catch (_) {}
-  // 2) wph_cookie.json（末次单账号登录产物）：合并进来，去重后不会与上面重复
-  try {
-    const data = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
-    for (const a of (Array.isArray(data) ? data : [data])) add(normalizeAccounts([a])[0]);
-  } catch (_) {}
-  // 3) HAR 扫描（多账号：HAR 里可能有多个账号的 session）
-  //    默认禁用：HAR_DIR 通常指向微信文件目录，文件极多会拖慢启动并刷屏。
-  //    需要时用 WPH_ENABLE_HAR=1 开启（仍按会话去重，不会刷屏）。
-  const enableHar = process.env.WPH_ENABLE_HAR === '1';
-  if (enableHar) {
-    try {
-      const hars = await findValidCookies();
-      hars.forEach((c, i) => add(normalizeAccounts([{ cookie: c, name: 'HAR账号' + (i + 1) }])[0]));
-    } catch (_) {}
-  } else {
-    log('ℹ️ HAR 扫描已禁用（默认）。如需启用请设置 WPH_ENABLE_HAR=1');
-  }
-  if (merged.length) log(`✅ 合并收集到 ${merged.length} 个账号候选 (wph_accounts.json + wph_cookie.json${enableHar ? ' + HAR' : ''}，已去重)`);
+  if (merged.length) log(`✅ 合并收集到 ${merged.length} 个账号候选（仅来自青龙环境变量）`);
   return merged;
 }
 // 校验并过滤出有效账号（无效/过期会话：若开启自动续期则先尝试无头浏览器刷新）
@@ -1518,7 +1494,7 @@ async function main() {
   log(`ℹ️ 当前版本 v${VERSION} | 启动时间 ${ts()}`);
   log('===== 唯品会 所有任务 (commonTask + checkRoom + 合成 + feedSheep + signIn) 多账号 =====');
   const accounts = await loadSessions();
-  if (!accounts.length) { log('❌ 找不到有效账号/会话：请在青龙「环境变量」里配置 WPH_COOKIE（多账号用换行分隔，每行一个完整 cookie 串），或 WPH_ACCOUNTS（JSON 数组，支持 name / mars_cid / mars_sid）。也可运行 `node wph_login.js` 生成 wph_accounts.json。当前既无 WPH_COOKIE / WPH_ACCOUNTS，也无 wph_accounts.json / wph_cookie.json / 有效 .har。'); await drainLog(); return; }
+  if (!accounts.length) { log('❌ 找不到有效账号/会话：请在青龙「环境变量」里配置 WPH_COOKIE（多账号用换行分隔，每行一个完整 cookie 串），或 WPH_ACCOUNTS（JSON 数组，支持 name / mars_cid / mars_sid）。当前未读取到任何账号。'); await drainLog(); return; }
   log(`共 ${accounts.length} 个有效账号`);
   const PARALLEL = Math.max(1, parseInt(process.env.WPH_PARALLEL) || 2); // 默认2：多账号自动并行(单号节奏不变、零风控风险)；如需串行设 WPH_PARALLEL=1
   // 幸运红包：九宫格随机抽奖。先预览奖品，默认直接抽(抽完当日次数)；设 WPH_REDPACKET 可指定 all/次数/skip，WPH_REDPACKET_ASK=1 恢复交互询问
