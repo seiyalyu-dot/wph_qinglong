@@ -184,7 +184,9 @@ async function refreshSession(cookieStr) {
   try { playwright = require('playwright'); } catch (_) { log('  ⚠️ 续期需要 playwright（npm i playwright），已跳过'); return null; }
   let browser;
   try {
-    browser = await playwright.chromium.launch({ headless: true });
+    const launchOpts = { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] };
+    if (process.env.PW_CHROMIUM) launchOpts.executablePath = process.env.PW_CHROMIUM;
+    browser = await playwright.chromium.launch(launchOpts);
     const ctx = await browser.newContext({ userAgent: REFRESH_UA, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
     // 把已保存的 cookie 注入上下文（统一挂到 .vip.com 域），保留其中尚有效的底层登录态
     const pairs = String(cookieStr).split(';').map((s) => s.trim()).filter(Boolean).map((kv) => {
