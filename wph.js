@@ -1043,24 +1043,28 @@ async function earnGrass(cookie, cid, sid, FSID) {
       }
       // 需真实下单/加购的任务无法脚本完成，跳过
       if (t.taskType === 4 || t.taskType === 43) { log('      跳过(需真人下单/加购)'); await sleep(rand(3000, 6000)); continue; }
-      // 普通任务：部分任务(如分享 type=5)每天可完成多次，循环续做直到服务端达上限
-      // REPEAT_TYPES 内的任务每轮领到草料就再试一轮；其余任务保持原行为只做一次
-      const REPEAT_TYPES = new Set([5]);
+      // 普通任务：可重复任务(REPEAT_TYPES)领到草料后续做下轮；其余只做一次
+      // 重要：分享类(type=5)需真人真实分享到微信，服务端才下发可领实例，脚本续做轮次 getTask 会 10015，
+      //       因此只能领列表预置的那一次(ut0)，无法自动刷满“每日 N 次”（平台限制，非脚本 bug）。
+      const REPEAT_TYPES = new Set();
       const MAX_REPEAT = 15;
-      let repeat = 0;
+      let repeat = 0, usePreset = true;
       while (repeat < MAX_REPEAT) {
         repeat++;
-        // 1) 取 userTaskId：每轮重新 getTask 拿新实例(可重复任务必须新 userTaskId)
-        const gt = await callSheep(SHEEP_BASE + '/withSign/getTask', { feedSheepId: FSID, taskId: t.taskId, subscribeMsg: '0', unionid: '', openid: '' }, cookie, cid, sid);
-        const ut = (gt.data && gt.data.userTaskId) || '';
-        log('      getTask:', gt.code, gt.msg || '', ut ? '(utid=' + ut + ')' : '');
-        if (!ut) { log('      无法领取(userTaskId 空)，跳过'); await sleep(rand(2500, 5000)); break; }
+        let ut;
+        if (usePreset && ut0) { ut = ut0; usePreset = false; } // 第一轮优先用列表预置 userTaskId
+        else {
+          const gt = await callSheep(SHEEP_BASE + '/withSign/getTask', { feedSheepId: FSID, taskId: t.taskId, subscribeMsg: '0', unionid: '', openid: '' }, cookie, cid, sid);
+          ut = (gt.data && gt.data.userTaskId) || '';
+          log('      getTask:', gt.code, gt.msg || '', ut ? '(utid=' + ut + ')' : '');
+          if (!ut) { log('      无法领取(userTaskId 空)，跳过'); await sleep(rand(2500, 5000)); break; }
+        }
         await sleep(rand(2000, 5000));
         // 浏览类需真实停留 browseTime 秒
         if (BROWSE_TYPES.has(t.taskType) || (t.extJson && /browseTime/.test(t.extJson))) {
           await sleep(rand(22000, 30000));
         }
-        // 2) 标记任务完成
+        // 标记任务完成
         const ft = await callSheep(SHEEP_BASE + '/withSign/finishTask', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
         const ftOk = (ft.code === 1 || ft.code === 10052 || ft.code === 30023);
         if (!ftOk) {
@@ -1070,7 +1074,7 @@ async function earnGrass(cookie, cid, sid, FSID) {
         }
         if (ft.code !== 1) { log(`      当天已完成/已达上限(code=${ft.code})，尝试领奖(若已领则略过)`); }
         await sleep(rand(2000, 5000));
-        // 3) 领奖
+        // 领奖
         const aw = await callSheep(SHEEP_BASE + '/withSign/getAward', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
         const AW_DONE = new Set([1, 10053, 30014]);
         if (AW_DONE.has(aw.code)) {
