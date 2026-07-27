@@ -1043,41 +1043,46 @@ async function earnGrass(cookie, cid, sid, FSID) {
       }
       // 需真实下单/加购的任务无法脚本完成，跳过
       if (t.taskType === 4 || t.taskType === 43) { log('      跳过(需真人下单/加购)'); await sleep(rand(3000, 6000)); continue; }
-      // 1) 取 userTaskId：优先用列表预置值(浏览任务已激活)，否则 getTask 领取
-      let ut = ut0;
-      if (!ut) {
+      // 普通任务：部分任务(如分享 type=5)每天可完成多次，循环续做直到服务端达上限
+      // REPEAT_TYPES 内的任务每轮领到草料就再试一轮；其余任务保持原行为只做一次
+      const REPEAT_TYPES = new Set([5]);
+      const MAX_REPEAT = 15;
+      let repeat = 0;
+      while (repeat < MAX_REPEAT) {
+        repeat++;
+        // 1) 取 userTaskId：每轮重新 getTask 拿新实例(可重复任务必须新 userTaskId)
         const gt = await callSheep(SHEEP_BASE + '/withSign/getTask', { feedSheepId: FSID, taskId: t.taskId, subscribeMsg: '0', unionid: '', openid: '' }, cookie, cid, sid);
-        ut = (gt.data && gt.data.userTaskId) || '';
+        const ut = (gt.data && gt.data.userTaskId) || '';
         log('      getTask:', gt.code, gt.msg || '', ut ? '(utid=' + ut + ')' : '');
-        if (!ut) { log('      无法领取(userTaskId 空)，跳过'); await sleep(rand(2500, 5000)); continue; }
+        if (!ut) { log('      无法领取(userTaskId 空)，跳过'); await sleep(rand(2500, 5000)); break; }
         await sleep(rand(2000, 5000));
+        // 浏览类需真实停留 browseTime 秒
+        if (BROWSE_TYPES.has(t.taskType) || (t.extJson && /browseTime/.test(t.extJson))) {
+          await sleep(rand(22000, 30000));
+        }
+        // 2) 标记任务完成
+        const ft = await callSheep(SHEEP_BASE + '/withSign/finishTask', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
+        const ftOk = (ft.code === 1 || ft.code === 10052 || ft.code === 30023);
+        if (!ftOk) {
+          log(`      finishTask 失败 ${ft.code}/${ft.msg || ''}（该任务可能需真人操作），跳过领奖`);
+          await sleep(rand(2500, 5000));
+          break;
+        }
+        if (ft.code !== 1) { log(`      当天已完成/已达上限(code=${ft.code})，尝试领奖(若已领则略过)`); }
+        await sleep(rand(2000, 5000));
+        // 3) 领奖
+        const aw = await callSheep(SHEEP_BASE + '/withSign/getAward', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
+        const AW_DONE = new Set([1, 10053, 30014]);
+        if (AW_DONE.has(aw.code)) {
+          log(`      领取${aw.code === 1 ? '✅ 草料+' + ((aw.data && aw.data.receiveAwardNum) || '?') : '✅ 已达成(今日已领过，草料+' + ((aw.data && aw.data.receiveAwardNum) || '0') + ')'}`);
+        } else {
+          log(`      领取失败 ${aw.code}/${aw.msg || ''}`);
+          break;
+        }
+        // 续做判定：领到草料且属可重复类型 → 再试一轮；否则停(含已达上限 10053/30014)
+        if (aw.code !== 1 || !REPEAT_TYPES.has(t.taskType)) break;
+        await sleep(rand(3000, 7000));
       }
-      // 参与任务的浏览类需真实停留 browseTime 秒，与 commonTask 一致留足间隔
-      if (BROWSE_TYPES.has(t.taskType) || (t.extJson && /browseTime/.test(t.extJson))) {
-        await sleep(rand(22000, 30000));
-      }
-      // 2) 标记任务/浏览完成（通用任务组件在浏览满 browseTime 秒后调 finishTask）
-      const ft = await callSheep(SHEEP_BASE + '/withSign/finishTask', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
-      // 完成判定：对齐 commonTask 的成功码集合
-      //   1    = 成功完成； 10052 = 当天已达上限/已达成(仍尝试领奖)； 30023 = 已达成(同成功)
-      const ftOk = (ft.code === 1 || ft.code === 10052 || ft.code === 30023);
-      if (!ftOk) {
-        log(`      finishTask 失败 ${ft.code}/${ft.msg || ''}（该任务可能需真人操作：如收藏商品/打开指定页面），跳过领奖`);
-        await sleep(rand(2500, 5000));
-        continue;
-      }
-      if (ft.code !== 1) { log(`      当天已完成/已达上限(code=${ft.code})，尝试领奖(若已领则略过)`); }
-      await sleep(rand(2000, 5000));
-      // 3) 领奖
-      const aw = await callSheep(SHEEP_BASE + '/withSign/getAward', { feedSheepId: FSID, taskId: t.taskId, userTaskId: ut }, cookie, cid, sid);
-      // 领取成功码：1=成功；10053/30014=当天已领过奖(达最大领奖次数)，属正常已完成，不计失败
-      const AW_DONE = new Set([1, 10053, 30014]);
-      if (AW_DONE.has(aw.code)) {
-        log(`      领取${aw.code === 1 ? '✅ 草料+' + ((aw.data && aw.data.receiveAwardNum) || '?') : '✅ 已达成(今日已领过，草料+' + ((aw.data && aw.data.receiveAwardNum) || '0') + ')'}`);
-      } else {
-        log(`      领取失败 ${aw.code}/${aw.msg || ''}`);
-      }
-      await sleep(rand(3000, 7000));
     }
     await sleep(rand(3000, 6000));
   }
